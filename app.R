@@ -58,7 +58,7 @@ mc_mode_choice <- mc_mode_choice %>%
 
 ####### ::::: APP SHINY :::::: #######
 
-ui <- fluidPage(
+ui <- page_fluid(
   tags$head(
     tags$style(HTML("
       body {
@@ -121,9 +121,9 @@ ui <- fluidPage(
           alt = "Universidad McMaster", 
           class = "main-image"),
       
-      navbarPage(
+      navset_bar(
         title = "Opciones de Análisis",
-        tabPanel("Resumen General", 
+        nav_panel("Resumen General", 
                  h3("Resumen General de la Encuesta"),
                  
                  # Tarjeta de introducción 1
@@ -178,7 +178,7 @@ ui <- fluidPage(
                  br(),
                  
         ),
-        tabPanel("Modos de Transporte", 
+        nav_panel("Modos de Transporte", 
                  h3("Análisis de los modos disponibles"),
                  # Primera fila para los value-boxes
                  fluidRow(
@@ -205,7 +205,7 @@ ui <- fluidPage(
                    ),
                    column(2,
                           div(class = "value-box",
-                              h4("Transporte local o público"),
+                              h4("Transporte local"),
                               h2(formatC(sum(mc_mode_choice$choice == "HSR"), big.mark = ",")),
                               p("estudiantes")
                           )
@@ -280,18 +280,26 @@ ui <- fluidPage(
   ),
   
   div(class = "footer",
-      p("© 2010 Universidad McMaster | Encuesta de Viajes | Creado con Shiny")
+      p("© 2010 Universidad McMaster | Encuesta de Viajes | Creado con Shiny por Marco Percastre")
   )
 )
 
 server <- function(input, output, session) {
-  output$plot_disponibilidad <- renderPlotly({
+  
+  # Creo reactivo para filtrar datos
+  data_reactive <- reactive({
     req(input$modo_transporte)
     
     datos_filtrados <- mc_mode_choice %>%
       { if(input$genero != "all") filter(., gender == as.numeric(input$genero)) else . } %>%
-      filter(choice %in% input$modo_transporte) %>%
-      select(choice, avcycle, avwalk, avhsr, avcar) %>%
+      filter(choice %in% input$modo_transporte)
+  })
+  
+  output$plot_disponibilidad <- renderPlotly({
+    req(input$modo_transporte)
+    
+    datos_filtrados <- data_reactive() %>%
+      select(choice, avcycle, avwalk, avhsr, avcar) %>% 
       gather(disponibilidad, valor, -choice) %>%
       mutate(
         disponibilidad = case_when(
@@ -341,10 +349,9 @@ server <- function(input, output, session) {
   output$plot_heatmap <- renderPlotly({
     req(input$modo_transporte)
     
-    datos_heatmap <- mc_mode_choice %>%
+    datos_heatmap <- data_reactive() %>%
       { if(input$genero != "all") filter(., gender == as.numeric(input$genero)) else . } %>%
       filter(choice %in% input$modo_transporte) %>%
-      select(choice, avcycle, avwalk, avhsr, avcar) %>%
       group_by(choice) %>%
       summarise(
         Bicicleta = mean(avcycle),
@@ -385,12 +392,12 @@ server <- function(input, output, session) {
   })
   
   output$plot_density <- renderPlotly({
-
-    filtered_data <- if (input$genero != "all") {
-      mc_mode_choice[mc_mode_choice$gender == input$genero, ]
-    } else {
-      mc_mode_choice
-    }
+    
+    # filtered_data <- if (input$genero != "all") {
+    #   mc_mode_choice[mc_mode_choice$gender == input$genero, ]
+    # } else {
+    #   mc_mode_choice
+    # }
     
     # Crear el plot base
     p <- plot_ly()
@@ -405,15 +412,15 @@ server <- function(input, output, session) {
     for(modo in input$modo_transporte) {
       
       time_col <- switch(modo,
-                         "Walk" = filtered_data$timewalk,
-                         "Car" = filtered_data$timecar,
-                         "HSR" = filtered_data$timehsr,
-                         "Cycle" = filtered_data$timecycle)
+                         "Walk" = data_reactive()$timewalk,
+                         "Car" = data_reactive()$timecar,
+                         "HSR" = data_reactive()$timehsr,
+                         "Cycle" = data_reactive()$timecycle)
       
       
       dens <- density(time_col, na.rm = TRUE)
       
-     
+      
       p <- p %>% add_trace(x = dens$x,
                            y = dens$y,
                            name = modo,
@@ -451,3 +458,4 @@ server <- function(input, output, session) {
 
 
 shinyApp(ui, server)
+
